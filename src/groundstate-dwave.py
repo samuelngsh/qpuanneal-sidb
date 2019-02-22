@@ -31,12 +31,15 @@ class GroundStateQPU:
         self.in_file = in_file
         self.out_file = out_file
 
-
-    # Import problem parameters and design from SiQAD Connector
-    def init_problem(self):
-        '''Read the problem from SiQADConnector.'''
         self.sqconn = siqadconn.SiQADConnector('Ground State Solver QPU', 
                 self.in_file, self.out_file)
+
+        self.precalculations()
+
+    # Import problem parameters and design from SiQAD Connector
+    def precalculations(self):
+        '''Retrieve variables from SiQADConnector and precompute handy 
+        variables.'''
 
         # retrieve DBs and convert to a format that hopping model takes
         dbs = []
@@ -54,8 +57,10 @@ class GroundStateQPU:
         db_r = distance.cdist(dbs, dbs, 'euclidean')
         self.V_ij = np.divide(self.q0 * K_c * np.exp(-db_r/debye_length), 
                 db_r, out=np.zeros_like(db_r), where=db_r!=0)
-
         print('V_ij=\n{}'.format(self.V_ij))
+
+        # local potentials
+        self.V_local = np.ones_like(dbs) * -1 * float(self.sqconn.getParameter('global_v0'))
 
         # TODO prune potentials that are too far away (let user set threshold)
 
@@ -140,5 +145,4 @@ def parse_cml_args():
 if __name__ == '__main__':
     cml_args = parse_cml_args()
     gs_qpu = GroundStateQPU(cml_args.in_file, cml_args.out_file)
-    gs_qpu.init_problem()
     gs_qpu.invoke_solver()
