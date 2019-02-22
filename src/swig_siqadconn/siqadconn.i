@@ -68,7 +68,10 @@ namespace std {
   %pythoncode{
     def export(self, *args, **kwargs):
       for key in kwargs:
-        self.setExport(key, StringVector2D(self.tuplify(kwargs[key])))
+        if key == 'db_loc':
+            self.setExport(key, StringPairVector(self.tuplify(kwargs[key])))
+        else:
+            self.setExport(key, StringVector2D(self.tuplify(kwargs[key])))
   }
   %pythoncode{
     def tuplify(self, data):

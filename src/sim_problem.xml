@@ -11,6 +11,7 @@
         <debye_length>5</debye_length>
         <epsilon_r>5.599999904632568</epsilon_r>
         <global_v0>0.27000001072883606</global_v0>
+        <d_threshold>5</d_threshold>
     </sim_params>
     <!--GUI Flags-->
     <gui>

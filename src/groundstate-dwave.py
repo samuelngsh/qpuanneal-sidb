@@ -41,39 +41,96 @@ class GroundStateQPU:
         '''Retrieve variables from SiQADConnector and precompute handy 
         variables.'''
 
+        sq_param = lambda key : self.sqconn.getParameter(key)
+
         # retrieve DBs and convert to a format that hopping model takes
-        dbs = []
-        db_scale = 1e-10    # DB locations given in angstrom
-        for db in self.sqconn.dbCollection():
-            dbs.append((db.x*db_scale, db.y*db_scale))
+        db_scale = 1e-10            # DB locations given in angstrom
+        dbs = [(db.x*db_scale, db.y*db_scale) for db in self.sqconn.dbCollection()]
+        dbs = np.asarray(dbs)
 
         # retrieve and process simulation parameters
-        K_c = 1./(4 * np.pi * float(self.sqconn.getParameter('epsilon_r')) * self.eps0)
-        debye_length = float(self.sqconn.getParameter('debye_length'))
-        debye_length *= 1e-9 # debye_length given in nm
+        K_c = 1./(4 * np.pi * float(sq_param('epsilon_r')) * self.eps0)
+        debye_length = float(sq_param('debye_length'))
+        debye_length *= 1e-9        # debye_length given in nm
 
         # precompute distances and inter-DB potentials
-        dbs = np.asarray(dbs)
         db_r = distance.cdist(dbs, dbs, 'euclidean')
+        d_threshold = 1e-9 * float(sq_param('d_threshold'))
+        db_r[db_r>d_threshold] = 0  # prune elements past distance threshold
         self.V_ij = np.divide(self.q0 * K_c * np.exp(-db_r/debye_length), 
                 db_r, out=np.zeros_like(db_r), where=db_r!=0)
         print('V_ij=\n{}'.format(self.V_ij))
 
         # local potentials
-        self.V_local = np.ones_like(dbs) * -1 * float(self.sqconn.getParameter('global_v0'))
-
-        # TODO prune potentials that are too far away (let user set threshold)
+        self.V_local = np.ones(len(dbs)) * -1 * float(sq_param('global_v0'))
 
         # TODO estimate qubit resource requirement and whether further pruning is required
+
+        # create graph for QPU
+        self.linear = {}
+        self.quadratic = {}
+        for i in range(len(db_r)):
+            key_i = 'db{}'.format(i)
+            self.linear[(key_i, key_i)] = self.V_local[i]
+            for j in range(i+1,len(db_r[0])):
+                if self.V_ij[i][j] != 0:
+                    key_j = 'db{}'.format(j)
+                    self.quadratic[(key_i, key_j)] = self.V_ij[i][j]
+
+        print(self.linear)
+        print(self.quadratic)
 
     def invoke_solver(self):
         '''Invoke D-Wave's solver using the problem defined in this class. In 
         the future, add user options for using local classical solver rather 
         than D-Wave's QPU.'''
 
-        print('To be implemented.')
+        from dwave.system.samplers import DWaveSampler
+        from dwave.system.composites import EmbeddingComposite
 
-        return
+        Q = dict(self.linear)
+        Q.update(self.quadratic)
+
+        self.response = EmbeddingComposite(DWaveSampler()).sample_qubo(Q, num_reads=1000)
+
+        for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
+            print(datum.sample, datum.energy, "Occurrences: ", datum.num_occurrences)
+
+    def exportResults(self):
+        '''Organize results and write them to file using physics connector.'''
+        dblocs = []
+        for i in range(len(self.n)):
+            dblocs.append( [str(self.db_locs[i][0]), str(self.db_locs[i][1])] )
+        db_dist = []
+        for i in range(len(self.results)):
+            db_dist_curr = ''
+            for charge in self.results[i][0]:
+                db_dist_curr += str(int(charge))
+            db_dist.append([db_dist_curr, str(self.results[i][1])])
+        # These are all valid:
+        # self.pcon.exportDBLocData(dblocs)
+        # self.pcon.setExport(db_loc=dblocs)
+        # self.pcon.exportDBChargeData(db_dist)
+        # self.pcon.setExport(db_charge=db_dist)
+        self.pcon.setExport(db_loc=dblocs, db_charge=db_dist)
+
+    def export_results(self):
+        '''Export QPU simultion results to SiQADConnector.'''
+        dblocs = []
+        for db in self.sqconn.dbCollection():
+            dblocs.append((str(db.x), str(db.y)))
+        print(dblocs)
+
+        charge_configs = []
+        for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
+            charge_config = ''
+            for charge in datum.sample.values():
+                charge_config += str(charge)
+            charge_configs.append([charge_config, str(datum.energy), str(datum.num_occurrences)])
+        print(charge_configs)
+
+        self.sqconn.export(db_loc=dblocs)
+        self.sqconn.export(db_charge=charge_configs)
 
     ## Run simulation
     #def runSimulation(self):
@@ -146,3 +203,4 @@ if __name__ == '__main__':
     cml_args = parse_cml_args()
     gs_qpu = GroundStateQPU(cml_args.in_file, cml_args.out_file)
     gs_qpu.invoke_solver()
+    gs_qpu.export_results()
