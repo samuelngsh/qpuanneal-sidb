@@ -19,8 +19,8 @@
         </global_v0>
         <d_threshold>
           <T>float</T>
-          <val>5</val>
-          <label>Distance threshold</label>
+          <val>10</val>
+          <label>Distance threshold (nm)</label>
           <tip>Maximum DB distance for Coulombic interaction to be considered.</tip>
         </d_threshold>
         <debye_length>
@@ -29,5 +29,11 @@
           <label>Debye length (nm)</label>
           <tip>Debye length for screening.</tip>
         </debye_length>
+        <repeat_count>
+          <T>int</T>
+          <val>1000</val>
+          <label>Repeat count</label>
+          <tip>Number of times to run this simulation on D-Wave's QPU.</tip>
+        </repeat_count>
     </sim_params>
 </physeng>
