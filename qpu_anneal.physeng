@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<physeng>
+    <name>QPUAnneal</name>
+    <version>0.1</version>
+    <interpreter>python</interpreter> <!-- used for calling a script with python, java, etc. Leave blank otherwise -->
+    <bin_path>groundstate-dwave.py</bin_path> <!-- path to binary or script, relative to the folder containing engine_description.xml -->
+    <sim_params preserve_order="true">
+        <epsilon_r>
+          <T>float</T>
+          <val>5.6</val>
+          <label>Relative permittivity</label>
+          <tip>Surface relative permittivity. Original default was 6.35, changed to 5.6 after Huff's fitting in the paper Binary Atomic Silicon Logic on Nature Electronics.</tip>
+        </epsilon_r>
+        <global_v0>
+          <T>float</T>
+          <val>0.25</val>
+          <label>Fermi level V0</label>
+          <tip>The global Fermi level on the surface, higher value brings more electrons to the surface.</tip>
+        </global_v0>
+        <d_threshold>
+          <T>float</T>
+          <val>10</val>
+          <label>Distance threshold (nm)</label>
+          <tip>Maximum DB distance for Coulombic interaction to be considered.</tip>
+        </d_threshold>
+        <debye_length>
+          <T>float</T>
+          <val>5</val>
+          <label>Debye length (nm)</label>
+          <tip>Debye length for screening.</tip>
+        </debye_length>
+        <repeat_count>
+          <T>int</T>
+          <val>1000</val>
+          <label>Repeat count</label>
+          <tip>Number of times to run this simulation on D-Wave's QPU.</tip>
+        </repeat_count>
+        <annealing_time>
+          <T>int</T>
+          <val>20</val>
+          <label>Annealing time for each anneal run.</label>
+          <tip>Between 20-2000.</tip>
+        </annealing_time>
+    </sim_params>
+</physeng>

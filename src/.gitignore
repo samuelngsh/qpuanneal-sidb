@@ -1,0 +1,6 @@
+# SiQADConnector, should be compiled on each machine. Follow instructions in `swig_siqadconn`
+siqadconn.py
+
+# Test files
+sim_problem.xml
+output.xml
