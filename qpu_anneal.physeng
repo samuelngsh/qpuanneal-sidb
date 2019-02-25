@@ -35,5 +35,11 @@
           <label>Repeat count</label>
           <tip>Number of times to run this simulation on D-Wave's QPU.</tip>
         </repeat_count>
+        <annealing_time>
+          <T>int</T>
+          <val>20</val>
+          <label>Annealing time for each anneal run.</label>
+          <tip>Between 20-2000.</tip>
+        </annealing_time>
     </sim_params>
 </physeng>

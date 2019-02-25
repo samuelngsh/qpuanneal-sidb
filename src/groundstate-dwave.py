@@ -43,6 +43,7 @@ class GroundStateQPU:
 
         sq_param = lambda key : self.sqconn.getParameter(key)
 
+        self.annealing_time = int(sq_param('annealing_time'))
         self.repeat_count = int(sq_param('repeat_count'))
 
         # retrieve DBs and convert to a format that hopping model takes
@@ -94,8 +95,9 @@ class GroundStateQPU:
 
         Q = dict(self.linear)
         Q.update(self.quadratic)
-
-        self.response = EmbeddingComposite(DWaveSampler()).sample_qubo(Q, num_reads=self.repeat_count)
+        
+        self.response = EmbeddingComposite(DWaveSampler()).sample_qubo(Q, 
+                annealing_time=self.annealing_time, num_reads=self.repeat_count)
 
         for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
             print(datum.sample, datum.energy, "Occurrences: ", datum.num_occurrences)
