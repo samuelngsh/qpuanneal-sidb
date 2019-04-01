@@ -82,43 +82,52 @@ class GroundStateQPU:
                     key_j = 'db{}'.format(j)
                     self.quadratic[(key_i, key_j)] = self.V_ij_pruned[i][j]
 
-        print(self.linear)
-        print(self.quadratic)
+        #print(self.linear)
+        #print(self.quadratic)
+
+        self.edgelist = dict(self.linear)
+        self.edgelist.update(self.quadratic)
+
+        print(self.edgelist)
 
     def invoke_solver(self):
         '''Invoke D-Wave's solver using the problem defined in this class. In 
         the future, add user options for using local classical solver rather 
         than D-Wave's QPU.'''
 
+        import networkx as nx
+        import dwave_networkx as dnx
+        import matplotlib.pyplot as plt
+        import minorminer
         from dwave.system.samplers import DWaveSampler
-        from dwave.system.composites import EmbeddingComposite
+        from dwave.system.composites import FixedEmbeddingComposite
 
-        Q = dict(self.linear)
-        Q.update(self.quadratic)
+        dwave_sampler = DWaveSampler()
+        target_edgelist = dwave_sampler.edgelist
+
+        embedding = minorminer.find_embedding(self.edgelist, target_edgelist)
+        print(embedding)
+        dnx.draw_chimera(embedding)
+        #G = dnx.chimera_graph(m=7, n=6, t=4)
+        #dnx.draw_chimera(G)
+        plt.show()
         
-        self.response = EmbeddingComposite(DWaveSampler()).sample_qubo(Q, 
-                annealing_time=self.annealing_time, num_reads=self.repeat_count)
+        #sampler = FixedEmbeddingComposite(dwave_sampler, embedding)
+        #self.response = sampler.sample_qubo(self.edgelist,
+        #        annealing_time=self.annealing_time, num_reads=self.repeat_count)
+        #
+        #for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
+        #    print(datum.sample, datum.energy, "Occurrences: ", datum.num_occurrences)
 
-        for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
+    def invoke_classical_solver(self):
+        '''Invoke D-Wave's classical solver.'''
+        from dwave_qbsolv import QBSolv
+
+        self.response_classical = QBSolv().sample_qubo(self.edgelist, 
+                num_repeats=self.repeat_count)
+
+        for datum in self.response_classical.data(['sample', 'energy', 'num_occurrences']):
             print(datum.sample, datum.energy, "Occurrences: ", datum.num_occurrences)
-
-    def exportResults(self):
-        '''Organize results and write them to file using physics connector.'''
-        dblocs = []
-        for i in range(len(self.n)):
-            dblocs.append( [str(self.db_locs[i][0]), str(self.db_locs[i][1])] )
-        db_dist = []
-        for i in range(len(self.results)):
-            db_dist_curr = ''
-            for charge in self.results[i][0]:
-                db_dist_curr += str(int(charge))
-            db_dist.append([db_dist_curr, str(self.results[i][1])])
-        # These are all valid:
-        # self.pcon.exportDBLocData(dblocs)
-        # self.pcon.setExport(db_loc=dblocs)
-        # self.pcon.exportDBChargeData(db_dist)
-        # self.pcon.setExport(db_charge=db_dist)
-        self.pcon.setExport(db_loc=dblocs, db_charge=db_dist)
 
     def export_results(self):
         '''Export QPU simultion results to SiQADConnector.'''
@@ -221,5 +230,8 @@ def parse_cml_args():
 if __name__ == '__main__':
     cml_args = parse_cml_args()
     gs_qpu = GroundStateQPU(cml_args.in_file, cml_args.out_file)
+    print('Classical solver')
+    gs_qpu.invoke_classical_solver()
+    print('QPU solver')
     gs_qpu.invoke_solver()
-    gs_qpu.export_results()
+    #gs_qpu.export_results()
