@@ -61,9 +61,10 @@ class GroundStateQPU:
         d_threshold = 1e-9 * float(sq_param('d_threshold'))
         self.V_ij = np.divide(self.q0 * K_c * np.exp(-db_r/debye_length), 
                 db_r, out=np.zeros_like(db_r), where=db_r!=0)
-        self.V_ij_pruned = self.V_ij
-        self.V_ij_pruned[db_r>d_threshold] = 0  # prune elements past distance threshold
         print('V_ij=\n{}'.format(self.V_ij))
+        self.V_ij_pruned = self.V_ij
+        if d_threshold > 0:
+            self.V_ij_pruned[db_r>d_threshold] = 0  # prune elements past distance threshold
         print('V_ij_pruned=\n{}'.format(self.V_ij_pruned))
 
         # local potentials
@@ -107,9 +108,12 @@ class GroundStateQPU:
 
         embedding = minorminer.find_embedding(self.edgelist, target_edgelist)
         print(embedding)
-        dnx.draw_chimera(embedding)
-        #G = dnx.chimera_graph(m=7, n=6, t=4)
-        #dnx.draw_chimera(G)
+
+        # Load edges from structure of available solver
+
+        T_nodelist, T_edgelist, T_adjacency = dwave_sampler.structure
+        G = dnx.chimera_graph(16,node_list=T_nodelist)
+        dnx.draw_chimera_embedding(G, embedding, node_size=8)
         plt.show()
         
         #sampler = FixedEmbeddingComposite(dwave_sampler, embedding)
@@ -123,10 +127,10 @@ class GroundStateQPU:
         '''Invoke D-Wave's classical solver.'''
         from dwave_qbsolv import QBSolv
 
-        self.response_classical = QBSolv().sample_qubo(self.edgelist, 
+        self.response = QBSolv().sample_qubo(self.edgelist, 
                 num_repeats=self.repeat_count)
 
-        for datum in self.response_classical.data(['sample', 'energy', 'num_occurrences']):
+        for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
             print(datum.sample, datum.energy, "Occurrences: ", datum.num_occurrences)
 
     def export_results(self):
@@ -230,8 +234,8 @@ def parse_cml_args():
 if __name__ == '__main__':
     cml_args = parse_cml_args()
     gs_qpu = GroundStateQPU(cml_args.in_file, cml_args.out_file)
-    print('Classical solver')
-    gs_qpu.invoke_classical_solver()
+    #print('Classical solver')
+    #gs_qpu.invoke_classical_solver()
     print('QPU solver')
     gs_qpu.invoke_solver()
-    #gs_qpu.export_results()
+    gs_qpu.export_results()

@@ -2,8 +2,17 @@
 <physeng>
     <name>QPUAnneal</name>
     <version>0.1</version>
-    <interpreter>python</interpreter> <!-- used for calling a script with python, java, etc. Leave blank otherwise -->
+    <services>ElectronGroundState</services>
     <bin_path>groundstate-dwave.py</bin_path> <!-- path to binary or script, relative to the folder containing engine_description.xml -->
+    <commands>
+        <!-- Default command. -->
+        <command label="Default">
+            <program>@PYTHON@</program>
+            <arg>@BINPATH@</arg>
+            <arg>@PROBLEMPATH@</arg>
+            <arg>@RESULTPATH@</arg>
+        </command>
+    </commands>
     <sim_params preserve_order="true">
         <epsilon_r>
           <T>float</T>
@@ -23,7 +32,7 @@
           <T>float</T>
           <val>10</val>
           <label>Distance threshold (nm)</label>
-          <tip>Maximum DB distance for Coulombic interaction to be considered.</tip>
+          <tip>Maximum DB distance for Coulombic interaction to be considered. Set to 0 or lower if pruning is not desired.</tip>
         </d_threshold>
         <debye_length>
           <T>float</T>

@@ -8,7 +8,7 @@
     </program>
     <sim_params>
         <annealing_time>100</annealing_time>
-        <d_threshold>10</d_threshold>
+        <d_threshold>2</d_threshold>
         <debye_length>5</debye_length>
         <epsilon_r>5.599999904632568</epsilon_r>
         <global_v0>0.25</global_v0>
