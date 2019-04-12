@@ -83,9 +83,6 @@ class GroundStateQPU:
                     key_j = 'db{}'.format(j)
                     self.quadratic[(key_i, key_j)] = self.V_ij_pruned[i][j]
 
-        #print(self.linear)
-        #print(self.quadratic)
-
         self.edgelist = dict(self.linear)
         self.edgelist.update(self.quadratic)
 
@@ -115,13 +112,19 @@ class GroundStateQPU:
         G = dnx.chimera_graph(16,node_list=T_nodelist)
         dnx.draw_chimera_embedding(G, embedding, node_size=8)
         plt.show()
+
+        # plot 3x3 Chimera graph
+        #plt.figure(1, figsize=(20,20))
+        #G = dnx.chimera_graph(3,3,4)
+        #dnx.draw_chimera(G)
+        #plt.show()
         
-        #sampler = FixedEmbeddingComposite(dwave_sampler, embedding)
-        #self.response = sampler.sample_qubo(self.edgelist,
-        #        annealing_time=self.annealing_time, num_reads=self.repeat_count)
-        #
-        #for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
-        #    print(datum.sample, datum.energy, "Occurrences: ", datum.num_occurrences)
+        sampler = FixedEmbeddingComposite(dwave_sampler, embedding)
+        self.response = sampler.sample_qubo(self.edgelist,
+                annealing_time=self.annealing_time, num_reads=self.repeat_count)
+        
+        for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
+            print(datum.sample, datum.energy, "Occurrences: ", datum.num_occurrences)
 
     def invoke_classical_solver(self):
         '''Invoke D-Wave's classical solver.'''
@@ -163,54 +166,6 @@ class GroundStateQPU:
                 E += self.V_ij[i][j] * charges[i] * charges[j]
 
         return E
-
-    ## Run simulation
-    #def runSimulation(self):
-    #    '''Run the simulation'''
-
-    #    # check simulation type ('animation' or 'line_scan')
-    #    if (self.sqconn.getParameter('simulation_type') == 'line_scan'):
-    #        self.runLineScan()
-    #    else:
-    #        self.runAnimation()
-
-    #def runLineScan(self):
-    #    # for now, only 1D line scan is supported, all y values will be discarded
-    #    # TODO 2D support
-    #    X = []
-    #    for dbloc in self.dbs:
-    #        X.append(dbloc[0])
-    #    X.sort()
-    #    print(X)
-
-    #    # call the AFM simulation
-    #    self.afm = AFMLine(X)
-    #    self.afm.setScanType(int(self.sqconn.getParameter('scan_type')),
-    #            float(self.sqconn.getParameter('write_strength')))
-    #    self.afm.setBias(float(self.sqconn.getParameter('bias')))
-    #    self.afm.run(Nel=int(self.sqconn.getParameter('num_electrons')),
-    #            nscans=int(self.sqconn.getParameter('num_scans')),
-    #            pad=[int(self.sqconn.getParameter('lattice_padding_l')),
-    #                int(self.sqconn.getParameter('lattice_padding_r'))]
-    #            )
-
-    #def runAnimation(self):
-    #    import sys
-
-    #    model = HoppingModel(self.dbs, self.sqconn.getParameter('hopping_model'))
-    #    model.fixElectronCount(int(self.sqconn.getParameter('num_electrons')))
-
-    #    model.addChannel('bulk')
-    #    model.addChannel('clock', enable=False)
-    #    model.addChannel('tip', enable=False)
-
-    #    app = QApplication(sys.argv)
-    #    mw = MainWindow(model)
-
-    #    mw.show()
-    #    mw.animator.start()
-    #    sys.exit(app.exec_())
-
 
 def parse_cml_args():
     '''Parse command-line arguments.'''
