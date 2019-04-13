@@ -27,12 +27,11 @@ class GroundStateQPU:
 
     #dbs = []                # list of tuples containing all dbs, (x, y)
 
-    def __init__(self, in_file, out_file):
+    def __init__(self, eng_name, in_file, out_file):
         self.in_file = in_file
         self.out_file = out_file
 
-        self.sqconn = siqadconn.SiQADConnector('Ground State Solver QPU', 
-                self.in_file, self.out_file)
+        self.sqconn = siqadconn.SiQADConnector(eng_name, self.in_file, self.out_file)
 
         self.precalculations()
 
@@ -133,7 +132,7 @@ class GroundStateQPU:
         # Invoke simulation
         sampler = FixedEmbeddingComposite(dwave_sampler, embedding)
         self.response = sampler.sample_qubo(self.edgelist,
-                annealing_time=annealing_time, num_reads=repeat_count)
+                annealing_time=annealing_time, num_reads=self.repeat_count)
         
         # Print results
         for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
@@ -220,15 +219,17 @@ def parse_cml_args():
 
 if __name__ == '__main__':
     cml_args = parse_cml_args()
-    gs_qpu = GroundStateQPU(cml_args.in_file, cml_args.out_file)
 
     if cml_args.solver == 'qpu':
         print('QPU solver')
+        gs_qpu = GroundStateQPU('QPUAnneal', cml_args.in_file, cml_args.out_file)
         gs_qpu.invoke_solver(cml_args.embedding_in_file, cml_args.embedding_out_file)
+        gs_qpu.export_results()
     elif cml_args.solver == 'classical':
         print('Classical solver')
+        gs_qpu = GroundStateQPU('QPUAnneal Classical Solver', cml_args.in_file, cml_args.out_file)
         gs_qpu.invoke_classical_solver()
+        gs_qpu.export_results()
     else:
         raise ValueError('Unknown solver name {}'.format(cml_args.solver))
 
-    gs_qpu.export_results()
