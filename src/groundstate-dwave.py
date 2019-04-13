@@ -10,7 +10,7 @@ __copyright__   = 'Apache License 2.0'
 __version__     = '0.1'
 __date__        = '2019-02-31'  # last update
 
-from argparse import ArgumentParser
+import argparse
 import os.path
 import numpy as np
 from scipy.spatial import distance
@@ -43,7 +43,6 @@ class GroundStateQPU:
 
         sq_param = lambda key : self.sqconn.getParameter(key)
 
-        self.annealing_time = int(sq_param('annealing_time'))
         self.repeat_count = int(sq_param('repeat_count'))
 
         # retrieve DBs and convert to a format that hopping model takes
@@ -61,10 +60,10 @@ class GroundStateQPU:
         d_threshold = 1e-9 * float(sq_param('d_threshold'))
         self.V_ij = np.divide(self.q0 * K_c * np.exp(-db_r/debye_length), 
                 db_r, out=np.zeros_like(db_r), where=db_r!=0)
-        print('V_ij=\n{}'.format(self.V_ij))
-        self.V_ij_pruned = self.V_ij
+        self.V_ij_pruned = np.copy(self.V_ij)
         if d_threshold > 0:
             self.V_ij_pruned[db_r>d_threshold] = 0  # prune elements past distance threshold
+        print('V_ij=\n{}'.format(self.V_ij))
         print('V_ij_pruned=\n{}'.format(self.V_ij_pruned))
 
         # local potentials
@@ -88,7 +87,7 @@ class GroundStateQPU:
 
         print(self.edgelist)
 
-    def invoke_solver(self):
+    def invoke_solver(self, embedding_in_path=None, embedding_out_path=None):
         '''Invoke D-Wave's solver using the problem defined in this class. In 
         the future, add user options for using local classical solver rather 
         than D-Wave's QPU.'''
@@ -97,17 +96,27 @@ class GroundStateQPU:
         import dwave_networkx as dnx
         import matplotlib.pyplot as plt
         import minorminer
+        import json
         from dwave.system.samplers import DWaveSampler
         from dwave.system.composites import FixedEmbeddingComposite
 
         dwave_sampler = DWaveSampler()
         target_edgelist = dwave_sampler.edgelist
 
-        embedding = minorminer.find_embedding(self.edgelist, target_edgelist)
-        print(embedding)
+        # import embedding if import file specified, else embed using minorminer
+        embedding = None
+        if embedding_in_path != None:
+            embedding = json.load(embedding_in_path)
+        else:
+            print('Attempting to embed problem to QPU...')
+            embedding = minorminer.find_embedding(self.edgelist, target_edgelist)
+
+        # export embedding if export file specified
+        if embedding_out_path != None:
+            with open(embedding_out_path, 'w') as outfile:
+                json.dump(embedding, outfile)
 
         # Load edges from structure of available solver
-
         T_nodelist, T_edgelist, T_adjacency = dwave_sampler.structure
         G = dnx.chimera_graph(16,node_list=T_nodelist)
         dnx.draw_chimera_embedding(G, embedding, node_size=8)
@@ -118,13 +127,17 @@ class GroundStateQPU:
         #G = dnx.chimera_graph(3,3,4)
         #dnx.draw_chimera(G)
         #plt.show()
+
+        annealing_time = int(self.sqconn.getParameter('annealing_time'))
         
+        # Invoke simulation
         sampler = FixedEmbeddingComposite(dwave_sampler, embedding)
         self.response = sampler.sample_qubo(self.edgelist,
-                annealing_time=self.annealing_time, num_reads=self.repeat_count)
+                annealing_time=annealing_time, num_reads=repeat_count)
         
+        # Print results
         for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
-            print(datum.sample, datum.energy, "Occurrences: ", datum.num_occurrences)
+            print(datum.sample, datum.energy, 'Occurrences: ', datum.num_occurrences)
 
     def invoke_classical_solver(self):
         '''Invoke D-Wave's classical solver.'''
@@ -134,7 +147,7 @@ class GroundStateQPU:
                 num_repeats=self.repeat_count)
 
         for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
-            print(datum.sample, datum.energy, "Occurrences: ", datum.num_occurrences)
+            print(datum.sample, datum.energy, 'Occurrences: ', datum.num_occurrences)
 
     def export_results(self):
         '''Export QPU simultion results to SiQADConnector.'''
@@ -159,13 +172,14 @@ class GroundStateQPU:
         accounting for all Coulombic interactions.'''
 
         E = 0.
-        charges = [int(c) for c in charge_config]
+        charges = np.asarray([int(c) for c in charge_config])
+        return .5 * np.inner(charges, np.dot(self.V_ij, charges))
         
-        for i in range(len(charges)):
-            for j in range(i+1,len(charges)):
-                E += self.V_ij[i][j] * charges[i] * charges[j]
+        #for i in range(len(charges)):
+        #    for j in range(i+1,len(charges)):
+        #        E += self.V_ij[i][j] * charges[i] * charges[j]
 
-        return E
+        #return E
 
 def parse_cml_args():
     '''Parse command-line arguments.'''
@@ -176,21 +190,45 @@ def parse_cml_args():
             raise argparse.ArgumentTypeError('{0} does not exist'.format(fpath))
         return fpath
 
-    parser = ArgumentParser(description='This script takes the problem '
+    parser = argparse.ArgumentParser(description='This script takes the problem '
             'file and attempts to find the ground state electron '
             'configuration on D-Wave\'s QPU.')
-    parser.add_argument(dest='in_file', type=file_must_exist,
+    parser.add_argument(dest='in_file',
+            type=file_must_exist,
             help='Path to the problem file.',
             metavar='IN_FILE')
-    parser.add_argument(dest='out_file', help='Path to the output file.',
+    parser.add_argument(dest='out_file', 
+            help='Path to the output file.',
             metavar='OUT_FILE')
+    parser.add_argument('--solver',
+            dest='solver', 
+            default='qpu', 
+            const='qpu', 
+            nargs='?',
+            choices=['qpu', 'classical'], 
+            help='Specify which solver to use.')
+    parser.add_argument('--import-embedding', 
+            dest='embedding_in_file',
+            type=argparse.FileType('r'), 
+            help='Path to the input file for embedding import.', 
+            metavar='EMBEDDING_IMPORT_PATH')
+    parser.add_argument('--export-embedding', 
+            dest='embedding_out_file',
+            help='Path to the output file for embedding export.',
+            metavar='EMBEDDING_EXPOERT_PATH')
     return parser.parse_args()
 
 if __name__ == '__main__':
     cml_args = parse_cml_args()
     gs_qpu = GroundStateQPU(cml_args.in_file, cml_args.out_file)
-    #print('Classical solver')
-    #gs_qpu.invoke_classical_solver()
-    print('QPU solver')
-    gs_qpu.invoke_solver()
+
+    if cml_args.solver == 'qpu':
+        print('QPU solver')
+        gs_qpu.invoke_solver(cml_args.embedding_in_file, cml_args.embedding_out_file)
+    elif cml_args.solver == 'classical':
+        print('Classical solver')
+        gs_qpu.invoke_classical_solver()
+    else:
+        raise ValueError('Unknown solver name {}'.format(cml_args.solver))
+
     gs_qpu.export_results()

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<physeng>
+    <name>QPUAnneal Classical Solver</name>
+    <version>0.1</version>
+    <services>ElectronGroundState</services>
+    <bin_path>groundstate-dwave.py</bin_path> <!-- path to binary or script, relative to the folder containing engine_description.xml -->
+    <commands>
+        <!-- Default command. -->
+        <command label="Default">
+            <program>@PYTHON@</program>
+            <arg>@BINPATH@</arg>
+            <arg>@PROBLEMPATH@</arg>
+            <arg>@RESULTPATH@</arg>
+            <arg>--solver=classical</arg>
+        </command>
+    </commands>
+    <sim_params preserve_order="true">
+        <epsilon_r>
+          <T>float</T>
+          <val>5.6</val>
+          <dp>2</dp>
+          <label>Relative permittivity</label>
+          <tip>Surface relative permittivity. Original default was 6.35, changed to 5.6 after Huff's fitting in the paper Binary Atomic Silicon Logic on Nature Electronics.</tip>
+        </epsilon_r>
+        <global_v0>
+          <T>float</T>
+          <val>0.25</val>
+          <dp>2</dp>
+          <label>Fermi level V0</label>
+          <tip>The global Fermi level on the surface, higher value brings more electrons to the surface.</tip>
+        </global_v0>
+        <d_threshold>
+          <T>float</T>
+          <val>10</val>
+          <label>Distance threshold (nm)</label>
+          <tip>Maximum DB distance for Coulombic interaction to be considered. Set to 0 or lower if pruning is not desired.</tip>
+        </d_threshold>
+        <debye_length>
+          <T>float</T>
+          <val>5</val>
+          <label>Debye length (nm)</label>
+          <tip>Debye length for screening.</tip>
+        </debye_length>
+        <repeat_count>
+          <T>int</T>
+          <val>10000</val>
+          <label>Repeat count</label>
+          <tip>Number of times to run this simulation on D-Wave's QPU.</tip>
+        </repeat_count>
+    </sim_params>
+</physeng>
