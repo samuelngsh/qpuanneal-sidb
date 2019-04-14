@@ -170,15 +170,8 @@ class GroundStateQPU:
         '''Return the system energy of the given charge configuration 
         accounting for all Coulombic interactions.'''
 
-        E = 0.
         charges = np.asarray([int(c) for c in charge_config])
         return .5 * np.inner(charges, np.dot(self.V_ij, charges))
-        
-        #for i in range(len(charges)):
-        #    for j in range(i+1,len(charges)):
-        #        E += self.V_ij[i][j] * charges[i] * charges[j]
-
-        #return E
 
 def parse_cml_args():
     '''Parse command-line arguments.'''
