@@ -57,16 +57,17 @@ class GroundStateQPU:
         # precompute distances and inter-DB potentials
         db_r = distance.cdist(dbs, dbs, 'euclidean')
         d_threshold = 1e-9 * float(sq_param('d_threshold'))
-        self.V_ij = np.divide(self.q0 * K_c * np.exp(-db_r/debye_length), 
+        self.v_ij = np.divide(self.q0 * K_c * np.exp(-db_r/debye_length), 
                 db_r, out=np.zeros_like(db_r), where=db_r!=0)
-        self.V_ij_pruned = np.copy(self.V_ij)
+        self.v_ij_pruned = np.copy(self.v_ij)
         if d_threshold > 0:
-            self.V_ij_pruned[db_r>d_threshold] = 0  # prune elements past distance threshold
-        print('V_ij=\n{}'.format(self.V_ij))
-        print('V_ij_pruned=\n{}'.format(self.V_ij_pruned))
+            self.v_ij_pruned[db_r>d_threshold] = 0  # prune elements past distance threshold
+        print('v_ij=\n{}'.format(self.v_ij))
+        print('v_ij_pruned=\n{}'.format(self.v_ij_pruned))
 
         # local potentials
-        self.V_local = np.ones(len(dbs)) * -1 * float(sq_param('global_v0'))
+        self.mu = float(sq_param('global_v0'))
+        self.V_local = np.ones(len(dbs)) * -1 * self.mu
 
         # TODO estimate qubit resource requirement and whether further pruning is required
 
@@ -77,16 +78,17 @@ class GroundStateQPU:
             key_i = 'db{}'.format(i)
             self.linear[(key_i, key_i)] = self.V_local[i]
             for j in range(i+1,len(db_r[0])):
-                if self.V_ij_pruned[i][j] != 0:
+                if self.v_ij_pruned[i][j] != 0:
                     key_j = 'db{}'.format(j)
-                    self.quadratic[(key_i, key_j)] = self.V_ij_pruned[i][j]
+                    self.quadratic[(key_i, key_j)] = self.v_ij_pruned[i][j]
 
         self.edgelist = dict(self.linear)
         self.edgelist.update(self.quadratic)
 
         print(self.edgelist)
 
-    def invoke_solver(self, embedding_in_path=None, embedding_out_path=None):
+    def invoke_solver(self, result_info_out_path=None, embedding_plot_path=None, 
+            embedding_in_path=None, embedding_out_path=None):
         '''Invoke D-Wave's solver using the problem defined in this class. In 
         the future, add user options for using local classical solver rather 
         than D-Wave's QPU.'''
@@ -115,11 +117,13 @@ class GroundStateQPU:
             with open(embedding_out_path, 'w') as outfile:
                 json.dump(embedding, outfile)
 
-        # Load edges from structure of available solver
-        T_nodelist, T_edgelist, T_adjacency = dwave_sampler.structure
-        G = dnx.chimera_graph(16,node_list=T_nodelist)
-        dnx.draw_chimera_embedding(G, embedding, node_size=8)
-        plt.show()
+        # Load edges from structure of available solver and plot embedding
+        if embedding_plot_path != None:
+            plt.figure(figsize=(16,16))
+            T_nodelist, T_edgelist, T_adjacency = dwave_sampler.structure
+            G = dnx.chimera_graph(16,node_list=T_nodelist)
+            dnx.draw_chimera_embedding(G, embedding, node_size=8)
+            plt.savefig(embedding_plot_path)
 
         # plot 3x3 Chimera graph
         #plt.figure(1, figsize=(20,20))
@@ -133,7 +137,11 @@ class GroundStateQPU:
         sampler = FixedEmbeddingComposite(dwave_sampler, embedding)
         self.response = sampler.sample_qubo(self.edgelist,
                 annealing_time=annealing_time, num_reads=self.repeat_count)
-        
+
+        if result_info_out_path != None:
+            with open(result_info_out_path, 'w') as outfile:
+                json.dump(self.response.info, outfile)
+
         # Print results
         for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
             print(datum.sample, datum.energy, 'Occurrences: ', datum.num_occurrences)
@@ -160,7 +168,10 @@ class GroundStateQPU:
             charge_config = ''
             for charge in datum.sample.values():
                 charge_config += str(charge)
-            charge_configs.append([charge_config, str(self.system_energy(charge_config)), str(datum.num_occurrences)])
+            charge_configs.append([charge_config, 
+                str(self.system_energy(charge_config)), 
+                str(datum.num_occurrences),
+                str(self.physically_valid(charge_config))])
         print(charge_configs)
 
         self.sqconn.export(db_loc=dblocs)
@@ -171,7 +182,32 @@ class GroundStateQPU:
         accounting for all Coulombic interactions.'''
 
         charges = np.asarray([int(c) for c in charge_config])
-        return .5 * np.inner(charges, np.dot(self.V_ij, charges))
+        return .5 * np.inner(charges, np.dot(self.v_ij, charges))
+
+    def physically_valid(self, charge_config):
+        '''Return whether the configuration is physically valid.'''
+
+        charges = np.asarray([int(c) for c in charge_config])
+
+        # check if all sites meet energy constraints
+        for i in range(len(charge_config)):
+            v_local = 0
+            #v_local -= self.v_ext[i]   # TODO add v_ext support
+            for j in range(len(charge_config)):
+                if i==j:
+                    continue
+                v_local += self.v_ij[i][j] * charges[j]
+
+            if (charges[i] == 1 and v_local > self.mu) or \
+                    (charges[i] == 0 and v_local < self.mu):
+                # constraints not met
+                print('Config {} is invalid, failed at index {} with v_local={}'
+                        .format(charge_config, i, v_local))
+                return 0
+
+        print('Config {} is valid'.format(charge_config))
+        return 1
+            
 
 def parse_cml_args():
     '''Parse command-line arguments.'''
@@ -216,7 +252,15 @@ if __name__ == '__main__':
     if cml_args.solver == 'qpu':
         print('QPU solver')
         gs_qpu = GroundStateQPU('QPUAnneal', cml_args.in_file, cml_args.out_file)
-        gs_qpu.invoke_solver(cml_args.embedding_in_file, cml_args.embedding_out_file)
+        embedding_plot_path = os.path.join(os.path.dirname(cml_args.out_file), 
+                'embedding.pdf')
+        result_info_path = os.path.join(os.path.dirname(cml_args.out_file),
+                'dwave_info_response.json')
+        gs_qpu.invoke_solver(
+                result_info_out_path=result_info_path,
+                embedding_plot_path=embedding_plot_path,
+                embedding_in_path=cml_args.embedding_in_file, 
+                embedding_out_path=cml_args.embedding_out_file)
         gs_qpu.export_results()
     elif cml_args.solver == 'classical':
         print('Classical solver')
