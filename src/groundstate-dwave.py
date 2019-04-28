@@ -27,9 +27,11 @@ class GroundStateQPU:
 
     #dbs = []                # list of tuples containing all dbs, (x, y)
 
-    def __init__(self, eng_name, in_file, out_file):
+    def __init__(self, eng_name, in_file, out_file, verbose=False):
         self.in_file = in_file
         self.out_file = out_file
+        self.verbose = verbose
+        self.cpu_time = None
 
         self.sqconn = siqadconn.SiQADConnector(eng_name, self.in_file, self.out_file)
 
@@ -40,6 +42,7 @@ class GroundStateQPU:
         '''Retrieve variables from SiQADConnector and precompute handy 
         variables.'''
 
+        print('Performing pre-calculations...')
         sq_param = lambda key : self.sqconn.getParameter(key)
 
         self.repeat_count = int(sq_param('repeat_count'))
@@ -62,8 +65,9 @@ class GroundStateQPU:
         self.v_ij_pruned = np.copy(self.v_ij)
         if d_threshold > 0:
             self.v_ij_pruned[db_r>d_threshold] = 0  # prune elements past distance threshold
-        print('v_ij=\n{}'.format(self.v_ij))
-        print('v_ij_pruned=\n{}'.format(self.v_ij_pruned))
+        if self.verbose:
+            print('v_ij=\n{}'.format(self.v_ij))
+            print('v_ij_pruned=\n{}'.format(self.v_ij_pruned))
 
         # local potentials
         self.mu = float(sq_param('global_v0'))
@@ -85,7 +89,10 @@ class GroundStateQPU:
         self.edgelist = dict(self.linear)
         self.edgelist.update(self.quadratic)
 
-        print(self.edgelist)
+        if self.verbose:
+            print(self.edgelist)
+
+        print('Pre-calculations complete.')
 
     def invoke_solver(self, result_info_out_path=None, embedding_plot_path=None, 
             embedding_in_path=None, embedding_out_path=None):
@@ -101,35 +108,45 @@ class GroundStateQPU:
         from dwave.system.samplers import DWaveSampler
         from dwave.system.composites import FixedEmbeddingComposite
 
+        print('Embedding problem...')
+
         dwave_sampler = DWaveSampler()
         target_edgelist = dwave_sampler.edgelist
 
         # import embedding if import file specified, else embed using minorminer
         embedding = None
         if embedding_in_path != None:
+            print('Loading embedding from {}'.format(embedding_in_path))
             embedding = json.load(embedding_in_path)
         else:
             print('Attempting to embed problem to QPU...')
+            # TODO might want to time the embedding function call
             embedding = minorminer.find_embedding(self.edgelist, target_edgelist)
 
         # export embedding if export file specified
         if embedding_out_path != None:
             with open(embedding_out_path, 'w') as outfile:
+                print('Exporting embedding to {}.'.format(embedding_out_path))
                 json.dump(embedding, outfile)
 
         # Load edges from structure of available solver and plot embedding
         if embedding_plot_path != None:
+            print('Generating embedding graph.')
             plt.figure(figsize=(16,16))
             T_nodelist, T_edgelist, T_adjacency = dwave_sampler.structure
             G = dnx.chimera_graph(16,node_list=T_nodelist)
             dnx.draw_chimera_embedding(G, embedding, node_size=8)
             plt.savefig(embedding_plot_path)
 
+        print('Embedding complete.')
+
         # plot 3x3 Chimera graph
         #plt.figure(1, figsize=(20,20))
         #G = dnx.chimera_graph(3,3,4)
         #dnx.draw_chimera(G)
         #plt.show()
+
+        print('Invoking QPU...')
 
         annealing_time = int(self.sqconn.getParameter('annealing_time'))
         
@@ -138,31 +155,42 @@ class GroundStateQPU:
         self.response = sampler.sample_qubo(self.edgelist,
                 annealing_time=annealing_time, num_reads=self.repeat_count)
 
+        print('QPU finished.')
+
         if result_info_out_path != None:
             with open(result_info_out_path, 'w') as outfile:
                 json.dump(self.response.info, outfile)
 
         # Print results
-        for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
-            print(datum.sample, datum.energy, 'Occurrences: ', datum.num_occurrences)
+        if self.verbose:
+            for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
+                print(datum.sample, datum.energy, 'Occurrences: ', datum.num_occurrences)
 
     def invoke_classical_solver(self):
         '''Invoke D-Wave's classical solver.'''
         from dwave_qbsolv import QBSolv
+        import time
 
+        time_start = time.process_time()
         self.response = QBSolv().sample_qubo(self.edgelist, 
                 num_repeats=self.repeat_count)
+        self.cpu_time = time.process_time() - time_start
+        print('CPU time: {}'.format(self.cpu_time))
 
-        for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
-            print(datum.sample, datum.energy, 'Occurrences: ', datum.num_occurrences)
+        if self.verbose:
+            for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
+                print(datum.sample, datum.energy, 'Occurrences: ', datum.num_occurrences)
 
     def export_results(self):
         '''Export QPU simultion results to SiQADConnector.'''
+        print('Exporting results...')
+        # DB locations
         dblocs = []
         for db in self.sqconn.dbCollection():
             dblocs.append((str(db.x), str(db.y)))
-        print(dblocs)
+        self.sqconn.export(db_loc=dblocs)
 
+        # charge configurations
         charge_configs = []
         for datum in self.response.data(['sample', 'energy', 'num_occurrences']):
             charge_config = ''
@@ -172,10 +200,16 @@ class GroundStateQPU:
                 str(self.system_energy(charge_config)), 
                 str(datum.num_occurrences),
                 str(self.physically_valid(charge_config))])
-        print(charge_configs)
-
-        self.sqconn.export(db_loc=dblocs)
+        if self.verbose:
+            print('Export charge configurations:')
+            print(charge_configs)
         self.sqconn.export(db_charge=charge_configs)
+
+        # CPU time
+        if self.cpu_time is not None:
+            self.sqconn.export(misc=[ ['cpu_time', self.cpu_time] ])
+
+        print('Export complete.')
 
     def system_energy(self, charge_config):
         '''Return the system energy of the given charge configuration 
@@ -201,8 +235,9 @@ class GroundStateQPU:
             if (charges[i] == 1 and v_local > self.mu) or \
                     (charges[i] == 0 and v_local < self.mu):
                 # constraints not met
-                print('Config {} is invalid, failed at index {} with v_local={}'
-                        .format(charge_config, i, v_local))
+                if self.verbose:
+                    print('Config {} is invalid, failed at index {} with v_local={}'
+                            .format(charge_config, i, v_local))
                 return 0
 
         print('Config {} is valid'.format(charge_config))
