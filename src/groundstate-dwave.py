@@ -14,6 +14,7 @@ import argparse
 import os.path
 import numpy as np
 from scipy.spatial import distance
+import itertools
 
 import siqadconn
 
@@ -49,7 +50,7 @@ class GroundStateQPU:
 
         # retrieve DBs and convert to a format that hopping model takes
         db_scale = 1e-10            # DB locations given in angstrom
-        dbs = [(db.x*db_scale, db.y*db_scale) for db in self.sqconn.dbCollection()]
+        dbs = [(round(db.x,2)*db_scale, round(db.y,2)*db_scale) for db in self.sqconn.dbCollection()]
         dbs = np.asarray(dbs)
 
         # retrieve and process simulation parameters

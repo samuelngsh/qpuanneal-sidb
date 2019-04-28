@@ -43,7 +43,7 @@
         </debye_length>
         <repeat_count>
           <T>int</T>
-          <val>10000</val>
+          <val>100</val>
           <label>Repeat count</label>
           <tip>Number of times to run this simulation on D-Wave's QPU.</tip>
         </repeat_count>
