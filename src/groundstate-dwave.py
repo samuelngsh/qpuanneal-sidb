@@ -15,6 +15,7 @@ import os.path
 import numpy as np
 from scipy.spatial import distance
 import itertools
+import time
 
 import siqadconn
 
@@ -33,6 +34,7 @@ class GroundStateQPU:
         self.out_file = out_file
         self.verbose = verbose
         self.cpu_time = None
+        self.timing_info = {}
 
         self.sqconn = siqadconn.SiQADConnector(eng_name, self.in_file, self.out_file)
 
@@ -95,7 +97,7 @@ class GroundStateQPU:
 
         print('Pre-calculations complete.')
 
-    def invoke_solver(self, result_info_out_path=None, embedding_plot_path=None, 
+    def invoke_solver(self, timing_info_out_path=None, embedding_plot_path=None, 
             embedding_in_path=None, embedding_out_path=None):
         '''Invoke D-Wave's solver using the problem defined in this class. In 
         the future, add user options for using local classical solver rather 
@@ -115,6 +117,7 @@ class GroundStateQPU:
         target_edgelist = dwave_sampler.edgelist
 
         # import embedding if import file specified, else embed using minorminer
+        self.embedding_time = None
         embedding = None
         if embedding_in_path != None:
             print('Loading embedding from {}'.format(embedding_in_path))
@@ -122,7 +125,9 @@ class GroundStateQPU:
         else:
             print('Attempting to embed problem to QPU...')
             # TODO might want to time the embedding function call
+            time_start = time.process_time()
             embedding = minorminer.find_embedding(self.edgelist, target_edgelist)
+            self.embedding_time = time.process_time() - time_start
 
         # export embedding if export file specified
         if embedding_out_path != None:
@@ -158,9 +163,12 @@ class GroundStateQPU:
 
         print('QPU finished.')
 
-        if result_info_out_path != None:
-            with open(result_info_out_path, 'w') as outfile:
-                json.dump(self.response.info, outfile)
+        # Dump response information (mostly timing related information)
+        self.timing_info['time_s_cpu_minorminer'] = self.embedding_time
+        self.timing_info['time_us_qpu'] = self.response.info['timing']
+        if timing_info_out_path != None:
+            with open(timing_info_out_path, 'w') as outfile:
+                json.dump(self.timing_info, outfile)
 
         # Print results
         if self.verbose:
@@ -170,12 +178,11 @@ class GroundStateQPU:
     def invoke_classical_solver(self):
         '''Invoke D-Wave's classical solver.'''
         from dwave_qbsolv import QBSolv
-        import time
 
         time_start = time.process_time()
         self.response = QBSolv().sample_qubo(self.edgelist, 
                 num_repeats=self.repeat_count)
-        self.cpu_time = time.process_time() - time_start
+        self.timing_info['time_s_cpu_qbsolv'] = time.process_time() - time_start
         print('CPU time: {}'.format(self.cpu_time))
 
         if self.verbose:
@@ -184,6 +191,21 @@ class GroundStateQPU:
 
     def export_results(self):
         '''Export QPU simultion results to SiQADConnector.'''
+
+        def flatten(d, parent_key='', sep='_'):
+            '''Flatten multi-layer dictionary.
+            From: https://stackoverflow.com/questions/6027558/
+            '''
+            items = []
+            for k, v in d.items():
+                new_key = parent_key + sep + k if parent_key else k
+                if isinstance(v, dict):
+                    items.extend(flatten(v, new_key, sep=sep).items())
+                else:
+                    items.append((new_key, v))
+            return dict(items)
+
+
         print('Exporting results...')
         # DB locations
         dblocs = []
@@ -206,9 +228,17 @@ class GroundStateQPU:
             print(charge_configs)
         self.sqconn.export(db_charge=charge_configs)
 
-        # CPU time
-        if self.cpu_time is not None:
-            self.sqconn.export(misc=[ ['cpu_time', self.cpu_time] ])
+        # export timing information
+        if self.timing_info:
+            # flatten timing information (esp. QPU response)
+            flattened_timing_info = flatten(self.timing_info)
+            export_timing_info = []
+            for key, val in flattened_timing_info.items():
+                export_timing_info.append([key, val])
+            self.sqconn.export(misc=export_timing_info)
+
+        #if self.cpu_time is not None:
+        #    self.sqconn.export(misc=[ ['cpu_time', self.cpu_time] ])
 
         print('Export complete.')
 
@@ -290,10 +320,10 @@ if __name__ == '__main__':
         gs_qpu = GroundStateQPU('QPUAnneal', cml_args.in_file, cml_args.out_file)
         embedding_plot_path = os.path.join(os.path.dirname(cml_args.out_file), 
                 'embedding.pdf')
-        result_info_path = os.path.join(os.path.dirname(cml_args.out_file),
-                'dwave_info_response.json')
+        timing_info_path = os.path.join(os.path.dirname(cml_args.out_file),
+                'timing_info.json')
         gs_qpu.invoke_solver(
-                result_info_out_path=result_info_path,
+                timing_info_out_path=timing_info_path,
                 embedding_plot_path=embedding_plot_path,
                 embedding_in_path=cml_args.embedding_in_file, 
                 embedding_out_path=cml_args.embedding_out_file)
