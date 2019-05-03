@@ -141,7 +141,7 @@ class GroundStateQPU:
             plt.figure(figsize=(16,16))
             T_nodelist, T_edgelist, T_adjacency = dwave_sampler.structure
             G = dnx.chimera_graph(16,node_list=T_nodelist)
-            dnx.draw_chimera_embedding(G, embedding, node_size=8)
+            dnx.draw_chimera_embedding(G, embedding, node_size=8, cmap='rainbow')
             plt.savefig(embedding_plot_path)
 
         print('Embedding complete.')
